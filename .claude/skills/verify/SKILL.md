@@ -21,3 +21,9 @@ description: Build/launch/drive recipe for verifying this PWA end-to-end in head
   calling it a bug.
 - Seed legacy-format data via `page.evaluate` writing localStorage key
   `handlog:v1`, then `page.reload()`.
+- WSL trap: vite's watcher gets no inotify events on /mnt/c, so a running dev
+  server serves STALE modules after edits — always restart vite after changing
+  src/ before driving, or you'll debug phantom bugs in old code.
+- Timeline chips render on both the street page and the End page — counting
+  text matches across the whole DOM double-counts events; read the truth from
+  localStorage instead.

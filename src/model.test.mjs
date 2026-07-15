@@ -10,6 +10,10 @@ const close = (a, b, e = 1e-9) => assert.ok(Math.abs(a - b) < e, `${a} != ${b}`)
 /* position rotation */
 assert.deepEqual(posNames(2), ["SB", "BB"]);
 assert.equal(posNames(6).length, 6);
+for (let n = 2; n <= 10; n++) assert.equal(posNames(n).length, n); // full ring incl. 10-max
+assert.deepEqual(actionOrder(10, "p"),
+  ["UTG", "UTG1", "UTG2", "MP", "LJ", "HJ", "CO", "BTN", "SB", "BB"]);
+assert.equal(posNames(11).length, 10);  // clamped: 10-handed is the max
 const s = newSession(); // 0.5/1, 6-max, bb units
 const h1 = newHand(s);
 assert.equal(h1.pos, "BTN");

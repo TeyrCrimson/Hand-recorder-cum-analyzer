@@ -2,7 +2,8 @@
 import assert from "node:assert/strict";
 import { posNames, nextPos, newSession, newHand, toCall, potEstimate, activeStreet,
   usedCards, fmtAmt, newPlayer, PLAYER_TYPES, playerStats,
-  actionOrder, livePositions, actionOn, handOver, ledgerNet } from "./model.js";
+  actionOrder, livePositions, actionOn, handOver, ledgerNet,
+  heroCommit, netEstimate, guessPlayerAt } from "./model.js";
 
 const close = (a, b, e = 1e-9) => assert.ok(Math.abs(a - b) < e, `${a} != ${b}`);
 
@@ -30,6 +31,13 @@ assert.equal(toCall(newHand(s), "p", 2), 2); // currency session, $1/$2: facing 
    the caller was the BB (blind overlaps the call) — the model documents this
    ≤1bb overestimate; the UI labels pot with "~". */
 close(potEstimate(h, s), 15.5);
+
+/* hero commitment + net estimate (h: hero SB, raised to 3 pre, called 4 flop) */
+close(heroCommit(h, s), 7);                       // max(0.5, 3) + 4
+close(netEstimate(h, s, "won"), 8.5);             // ~pot 15.5 − own 7
+close(netEstimate(h, s, "lost"), -7);
+assert.equal(netEstimate(h, s, "chop"), null);    // chop stays manual
+close(heroCommit({ ...h, events: [], pos: "BB" }, s), 1); // walk: blind only
 
 /* street detection from board */
 assert.equal(activeStreet(h), "p");
@@ -90,6 +98,17 @@ assert.equal(actionOn(ho, 6, "p"), "BB");
 const hl = { ...newHand(s), villains: [{ label: "V1", cards: "unknown", playerId: null }],
   events: [{ st: "p", actor: "V1", a: "C" }] };
 assert.equal(actionOn(hl, 6, "p"), null);
+
+/* villain link carried forward with the button rotation */
+const sp = { ...newSession(), players: [] };
+const g1 = { ...newHand(sp), pos: "BTN",
+  villains: [{ label: "CO", pos: "CO", cards: "unknown", playerId: "alice" }] };
+sp.hands = [g1];
+const g2 = { ...newHand(sp), pos: "SB", villains: [] }; // button moved one seat
+sp.hands.push(g2);
+assert.equal(guessPlayerAt(sp, g2, "BTN"), "alice"); // last hand's CO is now BTN
+assert.equal(guessPlayerAt(sp, g2, "UTG"), null);    // nobody linked there
+assert.equal(guessPlayerAt(sp, g1, "CO"), null);     // first hand: no prior info
 
 /* ledger */
 const sl = newSession();

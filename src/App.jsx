@@ -3,7 +3,7 @@ import { RANKS, SUITS, SUIT_CHAR, SUIT_COLOR, rVal, cid, cV, cS } from "./poker.
 import { STREETS, STREET_NAME, ACTIONS, posNames, newSession, newHand, toCall,
   potEstimate, fmtAmt, usedCards, activeStreet, exportSession, newPlayer,
   PLAYER_TYPES, playerStats, actionOrder, livePositions, actionOn, handOver,
-  ledgerNet } from "./model.js";
+  ledgerNet, netEstimate, guessPlayerAt } from "./model.js";
 
 const C = { bg: "#0E1512", panel: "#18211C", line: "#2A362F", text: "#E8EDE9",
   dim: "#8FA096", gold: "#E0B34A", red: "#E4574F", green: "#55B36A" };
@@ -450,8 +450,8 @@ function HandEditor({ session, hand, patch, patchSession, back }) {
     patch((h) => {
       let villains = h.villains;
       if (!legacy && actor !== "H" && a !== "F" && !villains.some((v) => v.pos === pos))
-        villains = [...villains,
-          { label: pos, pos, cards: "unknown", playerId: null }];
+        villains = [...villains, { label: pos, pos, cards: "unknown",
+          playerId: guessPlayerAt(session, h, pos) }]; // carried forward with the button
       return { ...h, villains, events: [...h.events,
         { st, actor, a, ...(amt != null ? { amt: +amt } : {}) }] };
     });
@@ -632,17 +632,24 @@ function HandEditor({ session, hand, patch, patchSession, back }) {
     <div key="sum" style={pageStyle}>
       <Sec>Position</Sec>
       {posChips}
-      <Sec>Your hand</Sec>
-      <CardRow target="hole" cards={hand.hole} need={2} label="Hero hole cards" />
+      <Sec>Your hand · board</Sec>
+      <div style={{ display: "flex", flexWrap: "wrap", gap: 8, alignItems: "center" }}>
+        <CardRow target="hole" cards={hand.hole} need={2} label="Hero hole cards" />
+        <span style={lbl}>|</span>
+        <CardRow target="f" cards={hand.board.f} need={3} label="Flop" />
+        <CardRow target="t" cards={hand.board.t} need={1} label="Turn" />
+        <CardRow target="r" cards={hand.board.r} need={1} label="River" />
+      </div>
       {hand.villains.length > 0 && <>
         <Sec>Villain cards (set any time — even next week)</Sec>
         {villainCards}
       </>}
-      <Sec>Result</Sec>
+      <Sec>Result — won/lost prefill an estimated net (~), edit to exact</Sec>
       <div style={{ display: "flex", gap: 5, alignItems: "center", flexWrap: "wrap" }}>
         {["won", "lost", "chop"].map((r) => (
           <Chip key={r} on={hand.result === r}
-            onClick={() => patch((h) => ({ ...h, result: r }))}>{r}</Chip>))}
+            onClick={() => patch((h) => ({ ...h, result: r,
+              net: netEstimate(h, session, r) ?? h.net }))}>{r}</Chip>))}
         <input type="number" inputMode="decimal"
           placeholder={`net ± (${session.unit === "bb" ? "bb" : session.cur})`}
           value={hand.net ?? ""}

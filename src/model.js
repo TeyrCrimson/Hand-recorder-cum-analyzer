@@ -166,6 +166,56 @@ export function potEstimate(hand, session) {
   return pot;
 }
 
+/** Hero's total committed, same "~" approximation as potEstimate:
+    per street, hero's largest commitment ("raise-to" semantics); preflop
+    at least the blind if hero posted one (a call/raise already contains it). */
+export function heroCommit(hand, session) {
+  const bbAmt = session.unit === "bb" ? 1 : session.bb;
+  const sbAmt = session.unit === "bb" ? session.sb / session.bb : session.sb;
+  const blind = hand.pos === "SB" ? sbAmt : hand.pos === "BB" ? bbAmt : 0;
+  let total = 0;
+  for (const st of STREETS) {
+    let aggro = st === "p" ? bbAmt : 0, mine = 0;
+    for (const e of hand.events.filter((e) => e.st === st)) {
+      if ("BRA".includes(e.a) && e.amt != null) {
+        aggro = Math.max(aggro, e.amt);
+        if (e.actor === "H") mine = Math.max(mine, e.amt);
+      } else if (e.a === "C" && e.actor === "H") mine = Math.max(mine, aggro);
+    }
+    total += st === "p" ? Math.max(blind, mine) : mine;
+  }
+  return total;
+}
+
+/** Estimated hero net for a result: won = pot minus own money, lost = own
+    money. Prefills the net field — editable, and chop stays manual. */
+export function netEstimate(hand, session, result) {
+  const mine = heroCommit(hand, session);
+  const x = result === "won" ? potEstimate(hand, session) - mine
+    : result === "lost" ? -mine : null;
+  return x == null ? null : Math.round(x * 10) / 10;
+}
+
+/** Guess which roster player sits at position p in `hand`, from earlier
+    hands: positions rotate with the button, so a prior hand's links are
+    shifted by the hero-position delta between the two hands.
+    ponytail: assumes nobody changed seats; the "who?" selector overrides. */
+export function guessPlayerAt(session, hand, p) {
+  const names = posNames(session.seats);
+  const n = names.length, target = names.indexOf(p), cur = names.indexOf(hand.pos);
+  if (target < 0 || cur < 0) return null;
+  const i = session.hands.findIndex((h) => h.id === hand.id);
+  const prior = (i < 0 ? session.hands : session.hands.slice(0, i));
+  for (let k = prior.length - 1; k >= 0; k--) {
+    const ph = prior[k], pi = names.indexOf(ph.pos);
+    if (pi < 0) continue;
+    const prevPos = names[(target - (cur - pi) % n + 2 * n) % n];
+    const v = ph.villains.find((x) => x.pos === prevPos && x.playerId);
+    if (v) return v.playerId;
+  }
+  return null;
+}
+
 /** Current street = last street with board cards fully set that has begun. */
 export function activeStreet(hand) {
   if (hand.board.r.length === 1) return "r";

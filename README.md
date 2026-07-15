@@ -29,8 +29,11 @@ docs/hand-recorder-plan.md  # original design doc
   UTG, postflop starts with the first live seat; folds remove seats, raises
   re-open action; the gold chip is whose turn it is (tap another live seat to
   override). A villain is created the first time a position puts money in,
-  unlinked until you pick who it is. Hero's cards are entered on the End page
-  (you're prompted there when you fold or reach the river).
+  linked automatically from earlier hands (positions rotate with the button;
+  the "who?" selector overrides). Hero's cards are entered on the End page
+  alongside the board (you're prompted there when you fold or reach the
+  river); tapping won/lost prefills an estimated net (~) from the pot and
+  hero's commitment — editable, and chop stays manual.
 - Session start: table setup gates recording — add your villains to the
   roster first (buy-in ledger rows are created with them). The session screen
   shows per-player P/L (net = current stack − buy-ins); losing an all-in

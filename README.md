@@ -24,12 +24,24 @@ docs/hand-recorder-plan.md  # original design doc
 ```
 
 ## Design notes
-- Fewest-taps: position auto-rotates per hand; actor auto-alternates after
-  each action; Fold/Check/Call are 1 tap; Bet/Raise are 2 (action + amount
-  chip). Amount chips: bb multiples preflop, pot fractions postflop.
-- Corrections: every recorded action is a chip in the timeline — tap twice
-  to delete it. Reopen any saved hand to edit anything (cards, actions,
-  result, villains) — a hand is never "locked".
+- Recording flow: a swipeable pager of street pages (Pre → Flop → Turn →
+  River → End). The app runs the action order like a dealer: preflop starts
+  UTG, postflop starts with the first live seat; folds remove seats, raises
+  re-open action; the gold chip is whose turn it is (tap another live seat to
+  override). A villain is created the first time a position puts money in,
+  unlinked until you pick who it is. Hero's cards are entered on the End page
+  (you're prompted there when you fold or reach the river).
+- Session start: table setup gates recording — add your villains to the
+  roster first (buy-in ledger rows are created with them). The session screen
+  shows per-player P/L (net = current stack − buy-ins); losing an all-in
+  prompts a rebuy on save.
+- Fewest-taps: position auto-rotates per hand; Fold/Check/Call are 1 tap;
+  Bet/Raise are 2 (action + amount chip); cards are 2 taps (rank, then suit).
+  Amount chips: bb multiples preflop, pot fractions postflop.
+- Corrections: every recorded action is a chip in the street's timeline — tap
+  twice to delete it; whose-turn recomputes from the remaining log. Reopen any
+  saved hand to edit anything — a hand is never "locked". Old hands recorded
+  before the pager open in manual actor mode (H/V1 chips).
 - Units: per-session choice of big blinds or currency; all amounts entered
   and displayed in that unit.
 - Pot is an estimate (~) — blind overlap isn't reconstructed; see model.js.

@@ -1,7 +1,8 @@
 /* Run with: node src/model.test.mjs */
 import assert from "node:assert/strict";
 import { posNames, nextPos, newSession, newHand, toCall, potEstimate, activeStreet,
-  usedCards, fmtAmt, newPlayer, PLAYER_TYPES, playerStats } from "./model.js";
+  usedCards, fmtAmt, newPlayer, PLAYER_TYPES, playerStats,
+  actionOrder, livePositions, actionOn, handOver, ledgerNet } from "./model.js";
 
 const close = (a, b, e = 1e-9) => assert.ok(Math.abs(a - b) < e, `${a} != ${b}`);
 
@@ -37,8 +38,9 @@ assert.equal(activeStreet(h), "f");
 h.board.t = [50];
 assert.equal(activeStreet(h), "t");
 
-/* dead cards + villain unknown default */
-assert.equal(h.villains[0].cards, "unknown");
+/* dead cards; new hands start with no villains (created per action) */
+assert.deepEqual(newHand(s).villains, []);
+h.villains = [{ label: "V1", cards: "unknown", playerId: null }];
 h.hole = [8, 9];
 h.villains[0].cards = [12, 13];
 assert.deepEqual([...usedCards(h)].sort((a, b) => a - b), [8, 9, 12, 13, 23, 30, 41, 50]);
@@ -52,7 +54,49 @@ assert.deepEqual(newSession().players, []);
 const p = newPlayer();
 assert.equal(p.type, "Unknown");
 assert.ok(PLAYER_TYPES.includes(p.type));
-assert.equal(newHand(s).villains[0].playerId, null);
+/* turn order */
+assert.deepEqual(actionOrder(6, "p"), ["UTG", "HJ", "CO", "BTN", "SB", "BB"]);
+assert.deepEqual(actionOrder(6, "f"), ["SB", "BB", "UTG", "HJ", "CO", "BTN"]);
+assert.deepEqual(actionOrder(2, "p"), ["SB", "BB"]);
+assert.deepEqual(actionOrder(2, "f"), ["BB", "SB"]);
+
+/* whose turn: 6-max, hero on the button */
+const ht = { ...newHand(s), pos: "BTN", villains: [], events: [] };
+assert.equal(actionOn(ht, 6, "p"), "UTG");
+ht.events.push({ st: "p", actor: "UTG", a: "F" }, { st: "p", actor: "HJ", a: "C" },
+  { st: "p", actor: "CO", a: "F" });
+assert.equal(actionOn(ht, 6, "p"), "BTN");
+ht.events.push({ st: "p", actor: "H", a: "R", amt: 3 });     // raise re-opens
+assert.equal(actionOn(ht, 6, "p"), "SB");
+ht.events.push({ st: "p", actor: "SB", a: "F" }, { st: "p", actor: "BB", a: "C" },
+  { st: "p", actor: "HJ", a: "C" });
+assert.equal(actionOn(ht, 6, "p"), null);                    // preflop closed
+assert.deepEqual(livePositions(ht, 6).sort(), ["BB", "BTN", "HJ"]);
+assert.equal(actionOn(ht, 6, "f"), "BB");                    // first live postflop
+ht.events.push({ st: "f", actor: "BB", a: "X" }, { st: "f", actor: "HJ", a: "B", amt: 4 });
+assert.equal(actionOn(ht, 6, "f"), "BTN");                   // bet re-opens, hero next
+ht.events.push({ st: "f", actor: "H", a: "F" }, { st: "f", actor: "BB", a: "F" });
+assert.ok(handOver(ht, 6));
+assert.equal(actionOn(ht, 6, "f"), null);
+
+/* limped pot: BB gets the option */
+const ho = { ...newHand(s), pos: "UTG", villains: [], events: [
+  { st: "p", actor: "H", a: "C" }, { st: "p", actor: "HJ", a: "F" },
+  { st: "p", actor: "CO", a: "F" }, { st: "p", actor: "BTN", a: "C" },
+  { st: "p", actor: "SB", a: "C" }] };
+assert.equal(actionOn(ho, 6, "p"), "BB");
+
+/* legacy hands (Vn actors, no pos) fall back to manual mode */
+const hl = { ...newHand(s), villains: [{ label: "V1", cards: "unknown", playerId: null }],
+  events: [{ st: "p", actor: "V1", a: "C" }] };
+assert.equal(actionOn(hl, 6, "p"), null);
+
+/* ledger */
+const sl = newSession();
+assert.deepEqual(ledgerNet(sl)[0], { key: "H", name: "Hero", invested: 100, stack: null, net: null });
+sl.ledger.H = { buyIns: [100, 50], stack: 0 };
+assert.equal(ledgerNet(sl)[0].net, -150);
+assert.deepEqual(ledgerNet({ ...sl, ledger: undefined }), []); // old sessions
 
 /* player stats over linked hands */
 const P = newPlayer();

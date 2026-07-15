@@ -9,7 +9,9 @@
               events: [ { st, actor, a, amt? } ],   // st: p|f|t|r
               villains: [ { label, cards: [cardId] | "unknown", playerId } ],
               result: "won"|"lost"|"chop"|null, net: number|null }
-   actor: "H" | "V1" | "V2" | "V3"
+   actor: "H" | position name ("UTG", "CO", ...) | legacy "V1".."V3"
+   villain: new hands are position-keyed ({ label: "CO", pos: "CO", ... });
+            legacy hands keep label "V1".. with no pos (manual actor mode).
    a: "F" fold | "X" check | "C" call | "B" bet | "R" raise-to | "A" all-in
    amt: total committed on that street by that action ("raise to" semantics),
         in the session's unit. */
@@ -46,7 +48,7 @@ export function nextPos(session) {
 export const newHand = (session) => ({
   id: crypto.randomUUID(), ts: Date.now(), pos: nextPos(session),
   hole: [], board: { f: [], t: [], r: [] }, events: [],
-  villains: [{ label: "V1", cards: "unknown", playerId: null }], result: null, net: null,
+  villains: [], result: null, net: null,
 });
 
 export const newSession = (prev = {}) => ({
@@ -54,8 +56,84 @@ export const newSession = (prev = {}) => ({
   name: new Date().toLocaleDateString(undefined, { month: "short", day: "numeric" }) + " session",
   unit: prev.unit ?? "bb", cur: prev.cur ?? "$",
   sb: prev.sb ?? 0.5, bb: prev.bb ?? 1, seats: prev.seats ?? 6,
-  players: [], hands: [],
+  buyIn: prev.buyIn ?? 100, setup: false,
+  players: [], hands: [], ledger: { H: { buyIns: [prev.buyIn ?? 100], stack: null } },
 });
+
+/** Resolve an event actor to a position name; null = legacy "Vn" actor
+    with no pos (falls back to manual actor mode in the UI). */
+function actorPos(hand, actor) {
+  if (actor === "H") return hand.pos;
+  const v = hand.villains.find((x) => x.label === actor);
+  if (v) return v.pos ?? null;
+  return /^V\d$/.test(actor) ? null : actor; // bare position = folded seat
+}
+
+/** Order of action on a street. */
+export function actionOrder(seats, st) {
+  const n = posNames(seats);
+  if (seats === 2) return st === "p" ? ["SB", "BB"] : ["BB", "SB"];
+  return st === "p" ? [...n.slice(3), n[0], n[1], n[2]]   // UTG..CO, BTN, SB, BB
+                    : [n[1], n[2], ...n.slice(3), n[0]];  // SB, BB, UTG..CO, BTN
+}
+
+/** Positions with no fold event (a fold on any street kills the seat). */
+export function livePositions(hand, seats) {
+  const dead = new Set();
+  for (const e of hand.events)
+    if (e.a === "F") { const p = actorPos(hand, e.actor); if (p) dead.add(p); }
+  return posNames(seats).filter((p) => !dead.has(p));
+}
+
+/** Next position to act on street st; null = action closed / hand over /
+    legacy hand (unresolvable actor). Replays the street's events against a
+    pending queue: X/C removes the actor, F kills the seat, B/R/A re-opens
+    (pending = everyone live after the aggressor, cyclically). Recomputed from
+    the event log each render, so deletions and overrides self-correct.
+    ponytail: a short all-in is treated as a full raise (re-opens action);
+    tracking bet sizes to get the real rule isn't worth it. */
+export function actionOn(hand, seats, st) {
+  const before = STREETS.indexOf(st);
+  const dead = new Set();
+  for (const e of hand.events)
+    if (STREETS.indexOf(e.st) < before && e.a === "F") {
+      const p = actorPos(hand, e.actor);
+      if (!p) return null;
+      dead.add(p);
+    }
+  let live = actionOrder(seats, st).filter((p) => !dead.has(p));
+  let pending = [...live];
+  for (const e of hand.events.filter((e) => e.st === st)) {
+    const p = actorPos(hand, e.actor);
+    if (!p) return null;
+    if (e.a === "F") {
+      live = live.filter((x) => x !== p);
+      pending = pending.filter((x) => x !== p);
+    } else if ("BRA".includes(e.a)) {
+      const i = live.indexOf(p);
+      pending = [...live.slice(i + 1), ...live.slice(0, i)];
+    } else pending = pending.filter((x) => x !== p);
+  }
+  return live.length > 1 ? pending[0] ?? null : null;
+}
+
+export const handOver = (hand, seats) => livePositions(hand, seats).length <= 1;
+
+/** Session P/L rows from the buy-in ledger: net = stack − sum(buyIns);
+    stack null = still playing (net null). Hero row always first. */
+export function ledgerNet(session) {
+  const ledger = session.ledger ?? {};
+  const rows = [];
+  for (const key of Object.keys(ledger)) {
+    const { buyIns = [], stack = null } = ledger[key];
+    const invested = buyIns.reduce((a, b) => a + b, 0);
+    const name = key === "H" ? "Hero"
+      : session.players.find((p) => p.id === key)?.name || "?";
+    rows.push({ key, name, invested, stack, net: stack == null ? null : stack - invested });
+  }
+  rows.sort((a, b) => (a.key === "H" ? -1 : b.key === "H" ? 1 : 0));
+  return rows;
+}
 
 /** Last aggressive amount on a street (what a Call matches). */
 export function toCall(hand, st, bbAmt = 1) {

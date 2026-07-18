@@ -646,8 +646,13 @@ function HandEditor({ session, hand, patch, patchSession, back, next }) {
       if (ei < si) foldedBefore.add(posOf(e.actor));
       else if (ei === si) foldedHere.add(posOf(e.actor));
     }
-    const quick = st === "p" ? [2, 2.5, 3, 3.5].map((m) => m * bb)
+    const quick = pending === "S" ? [2 * toCall(hand, "p", bb)]
+      : st === "p" ? [2, 2.5, 3, 3.5].map((m) => m * bb)
       : [1 / 3, 1 / 2, 2 / 3, 1].map((f) => +(f * pot).toFixed(1));
+    /* straddles are posted before action: chip only while preflop is
+       untouched (or only straddles so far — restraddle) */
+    const canStraddle = st === "p" &&
+      hand.events.every((e) => e.st !== "p" || e.a === "S");
     const evs = idxEvents.filter(({ e }) => e.st === st);
     const done = handOver(hand, seats) || st === "r";
     return (
@@ -672,9 +677,11 @@ function HandEditor({ session, hand, patch, patchSession, back, next }) {
         </div>
         {cur != null && <>
           <div style={{ display: "flex", gap: 5, flexWrap: "wrap" }}>
-            {Object.entries(ACTIONS).map(([k, name]) => (
+            {Object.entries(ACTIONS)
+              .filter(([k]) => k !== "S" || canStraddle)
+              .map(([k, name]) => (
               <Chip key={k} on={pending === k}
-                onClick={() => ("BRA".includes(k) ? setPending(k) : addEvent(st, k))}>
+                onClick={() => ("BRAS".includes(k) ? setPending(k) : addEvent(st, k))}>
                 {name}</Chip>))}
           </div>
           {pending && (

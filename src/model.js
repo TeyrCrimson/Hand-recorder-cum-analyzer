@@ -12,7 +12,8 @@
    actor: "H" | position name ("UTG", "CO", ...) | legacy "V1".."V3"
    villain: new hands are position-keyed ({ label: "CO", pos: "CO", ... });
             legacy hands keep label "V1".. with no pos (manual actor mode).
-   a: "F" fold | "X" check | "C" call | "B" bet | "R" raise-to | "A" all-in
+   a: "S" straddle | "F" fold | "X" check | "C" call | "B" bet
+      | "R" raise-to | "A" all-in
    amt: total committed on that street by that action ("raise to" semantics),
         in the session's unit. */
 
@@ -23,7 +24,13 @@ export const PLAYER_TYPES = ["TAG", "LAG", "Nit", "Station", "Maniac", "Unknown"
 export const newPlayer = () => ({ id: crypto.randomUUID(), name: "",
   type: "Unknown", note: "" });
 
-export const ACTIONS = { F: "Fold", X: "Check", C: "Call", B: "Bet", R: "Raise", A: "All-in" };
+/* "S" = straddle: a blind raise posted preflop before action ("raise-to"
+   amt like B/R). Aggressive for pot/to-call math, but the straddler keeps
+   the option (acts last preflop); excluded from VPIP/PFR — dark money.
+   ponytail: one rule for all rooms — action starts after the straddler,
+   straddler acts last; odd button-straddle house rules = tap-to-override. */
+export const ACTIONS = { S: "Straddle", F: "Fold", X: "Check", C: "Call",
+  B: "Bet", R: "Raise", A: "All-in" };
 
 export function posNames(seats) {
   seats = Math.min(Math.max(+seats || 2, 2), 12);
@@ -135,6 +142,10 @@ export function actionOn(hand, seats, st) {
     if (e.a === "F") {
       live = live.filter((x) => x !== p);
       pending = pending.filter((x) => x !== p);
+    } else if (e.a === "S") {
+      // blind raise WITH the option: straddler re-queued last
+      const i = live.indexOf(p);
+      pending = [...live.slice(i + 1), ...live.slice(0, i), p];
     } else if ("BRA".includes(e.a)) {
       const i = live.indexOf(p);
       pending = [...live.slice(i + 1), ...live.slice(0, i)];
@@ -165,7 +176,7 @@ export function ledgerNet(session) {
 export function toCall(hand, st, bbAmt = 1) {
   let amt = st === "p" ? bbAmt : 0; // preflop opens facing the blind
   for (const e of hand.events)
-    if (e.st === st && "BRA".includes(e.a) && e.amt != null) amt = e.amt;
+    if (e.st === st && "BRAS".includes(e.a) && e.amt != null) amt = e.amt;
   return amt;
 }
 
@@ -180,7 +191,7 @@ export function potEstimate(hand, session) {
     const commit = {};
     let aggro = st === "p" ? bbAmt : 0;
     for (const e of hand.events.filter((e) => e.st === st)) {
-      if ("BRA".includes(e.a) && e.amt != null) {
+      if ("BRAS".includes(e.a) && e.amt != null) {
         commit[e.actor] = Math.max(commit[e.actor] || 0, e.amt);
         aggro = Math.max(aggro, e.amt);
       } else if (e.a === "C") commit[e.actor] = Math.max(commit[e.actor] || 0, aggro);
@@ -203,7 +214,7 @@ export function heroCommit(hand, session) {
   for (const st of STREETS) {
     let aggro = st === "p" ? bbAmt : 0, mine = 0;
     for (const e of hand.events.filter((e) => e.st === st)) {
-      if ("BRA".includes(e.a) && e.amt != null) {
+      if ("BRAS".includes(e.a) && e.amt != null) {
         aggro = Math.max(aggro, e.amt);
         if (e.actor === "H") mine = Math.max(mine, e.amt);
       } else if (e.a === "C" && e.actor === "H") mine = Math.max(mine, aggro);

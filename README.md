@@ -43,6 +43,10 @@ docs/hand-recorder-plan.md  # original design doc
   change keep their stored links. Buy-in ledger rows are created with the
   players; the session screen shows per-player P/L (net = current stack −
   buy-ins), and losing an all-in prompts a rebuy on save.
+- Straddles: a "Straddle" action on an untouched preflop (restraddles stack);
+  aggressive for pot/to-call math, but the straddler keeps the option (acts
+  last preflop). One rule for all rooms — action starts after the straddler;
+  tap-to-override covers house variants. Excluded from VPIP/PFR (dark money).
 - Fewest-taps: position auto-rotates per hand; Fold/Check/Call are 1 tap;
   Bet/Raise are 2 (action + amount chip); cards are 2 taps (rank, then suit).
   Amount chips: bb multiples preflop, pot fractions postflop.

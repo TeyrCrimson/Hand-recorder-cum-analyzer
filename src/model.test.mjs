@@ -106,6 +106,37 @@ const hl = { ...newHand(s), villains: [{ label: "V1", cards: "unknown", playerId
   events: [{ st: "p", actor: "V1", a: "C" }] };
 assert.equal(actionOn(hl, 6, "p"), null);
 
+/* straddle: blind raise with the option, aggressive for pot/to-call math */
+const hst = { ...newHand(s), pos: "BTN", villains: [], events: [
+  { st: "p", actor: "UTG", a: "S", amt: 2 }] };
+assert.equal(toCall(hst, "p"), 2);
+assert.equal(actionOn(hst, 6, "p"), "HJ");         // action starts after straddler
+hst.events.push({ st: "p", actor: "HJ", a: "C" }, { st: "p", actor: "CO", a: "F" },
+  { st: "p", actor: "H", a: "C" }, { st: "p", actor: "SB", a: "F" },
+  { st: "p", actor: "BB", a: "C" });
+assert.equal(actionOn(hst, 6, "p"), "UTG");        // straddler keeps the option
+hst.events.push({ st: "p", actor: "UTG", a: "X" });
+assert.equal(actionOn(hst, 6, "p"), null);         // option checked -> closed
+close(potEstimate(hst, s), 1.5 + 2 + 2 + 2 + 2);   // blinds + straddle + 3 calls
+close(heroCommit(hst, s), 2);                      // hero flat-called the straddle
+/* restraddle re-queues behind the new straddler */
+const hst2 = { ...newHand(s), pos: "BTN", villains: [], events: [
+  { st: "p", actor: "UTG", a: "S", amt: 2 }, { st: "p", actor: "HJ", a: "S", amt: 4 }] };
+assert.equal(actionOn(hst2, 6, "p"), "CO");
+assert.equal(toCall(hst2, "p"), 4);
+/* raise over a straddle: option is gone, normal re-open rules */
+hst2.events.push({ st: "p", actor: "CO", a: "R", amt: 12 });
+assert.equal(actionOn(hst2, 6, "p"), "BTN");
+/* dark money: straddle alone is neither VPIP nor PFR */
+const Pst = newPlayer();
+const sst = { ...newSession(), players: [Pst] };
+const hv = { ...newHand(sst), villains: [{ label: "UTG", pos: "UTG", cards: "unknown",
+  playerId: Pst.id }], events: [{ st: "p", actor: "UTG", a: "S", amt: 2 },
+  { st: "p", actor: "UTG", a: "X" }] };
+sst.hands = [hv];
+assert.equal(playerStats(sst, Pst.id).vpip, 0);
+assert.equal(playerStats(sst, Pst.id).pfr, 0);
+
 /* hero position picked at setup drives the first hand only */
 const sh = { ...newSession(), heroPos: "CO" };
 assert.equal(newHand(sh).pos, "CO");

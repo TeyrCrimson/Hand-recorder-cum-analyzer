@@ -164,8 +164,18 @@ function Sessions({ data, setData, open }) {
               onChange={(v) => setDraft({ ...draft, sb: v })} />
             <Field label="BB" value={draft.bb ?? last?.bb ?? 1} num
               onChange={(v) => setDraft({ ...draft, bb: v })} />
-            <Field label="Seats" value={draft.seats ?? last?.seats ?? 6} num
-              onChange={(v) => setDraft({ ...draft, seats: v })} />
+            <label style={{ flex: 1, fontSize: 11, color: C.dim,
+              display: "block", marginBottom: 8 }}>
+              Seats
+              <select value={draft.seats ?? last?.seats ?? 6}
+                onChange={(e) => setDraft({ ...draft, seats: +e.target.value })}
+                style={{ width: "100%", boxSizing: "border-box", marginTop: 4,
+                  padding: 8, borderRadius: 6, border: `1px solid ${C.line}`,
+                  background: C.bg, color: C.text, fontSize: 15 }}>
+                {Array.from({ length: 11 }, (_, i) => i + 2).map((n) => (
+                  <option key={n} value={n}>{n}-max</option>))}
+              </select>
+            </label>
           </div>
           <div style={{ display: "flex", gap: 6, margin: "10px 0" }}>
             <Chip on={(draft.unit ?? last?.unit ?? "bb") === "bb"}

@@ -26,14 +26,17 @@ export const newPlayer = () => ({ id: crypto.randomUUID(), name: "",
 export const ACTIONS = { F: "Fold", X: "Check", C: "Call", B: "Bet", R: "Raise", A: "All-in" };
 
 export function posNames(seats) {
+  seats = Math.min(Math.max(+seats || 2, 2), 12);
   if (seats === 2) return ["SB", "BB"]; // HU: SB is the button
   const order = { 3: ["BTN","SB","BB"], 4: ["BTN","SB","BB","UTG"],
     5: ["BTN","SB","BB","UTG","CO"], 6: ["BTN","SB","BB","UTG","HJ","CO"],
     7: ["BTN","SB","BB","UTG","MP","HJ","CO"],
     8: ["BTN","SB","BB","UTG","UTG1","MP","HJ","CO"],
     9: ["BTN","SB","BB","UTG","UTG1","MP","LJ","HJ","CO"],
-    10: ["BTN","SB","BB","UTG","UTG1","UTG2","MP","LJ","HJ","CO"] };
-  return order[Math.min(Math.max(+seats || 2, 2), 10)];
+    10: ["BTN","SB","BB","UTG","UTG1","UTG2","MP","LJ","HJ","CO"],
+    11: ["BTN","SB","BB","UTG","UTG1","UTG2","UTG3","MP","LJ","HJ","CO"],
+    12: ["BTN","SB","BB","UTG","UTG1","UTG2","UTG3","MP","MP1","LJ","HJ","CO"] };
+  return order[seats];
 }
 
 /** Auto-rotate: hero's position advances one seat per hand. */

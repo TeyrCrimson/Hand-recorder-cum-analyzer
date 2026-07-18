@@ -39,13 +39,35 @@ export function posNames(seats) {
   return order[seats];
 }
 
-/** Auto-rotate: hero's position advances one seat per hand. */
+/** Auto-rotate: hero's position advances one seat per hand.
+    First hand starts from the position picked at table setup. */
 export function nextPos(session) {
   const names = posNames(session.seats);
   const last = session.hands[session.hands.length - 1];
-  if (!last) return names[0];
+  if (!last) return names.includes(session.heroPos) ? session.heroPos : names[0];
   const i = names.indexOf(last.pos);
   return names[(i + 1 + names.length) % names.length];
+}
+
+/** Seat map: playerIds clockwise from hero, one per non-hero seat (null =
+    stranger/empty). Read-side padding/truncation absorbs table resizes and
+    old sessions (which fall back to roster order). */
+export function seatOrderOf(session) {
+  const n = posNames(session.seats).length - 1;
+  const o = (session.seatOrder ?? (session.players ?? []).map((p) => p.id)).slice(0, n);
+  return [...o, ...Array(Math.max(0, n - o.length)).fill(null)];
+}
+
+/** Player seated at position p for this hand: the seat k clockwise from
+    hero holds position names[(heroIdx + k) % n]. Falls back to rotation
+    inference for sessions recorded before seat maps existed. */
+export function playerAt(session, hand, p) {
+  if (!session.seatOrder) return guessPlayerAt(session, hand, p);
+  const names = posNames(session.seats);
+  const hi = names.indexOf(hand.pos), pi = names.indexOf(p);
+  if (hi < 0 || pi < 0) return null;
+  const off = (pi - hi + names.length) % names.length;
+  return off > 0 ? seatOrderOf(session)[off - 1] ?? null : null;
 }
 
 export const newHand = (session) => ({
@@ -59,7 +81,8 @@ export const newSession = (prev = {}) => ({
   name: new Date().toLocaleDateString(undefined, { month: "short", day: "numeric" }) + " session",
   unit: prev.unit ?? "bb", cur: prev.cur ?? "$",
   sb: prev.sb ?? 0.5, bb: prev.bb ?? 1, seats: prev.seats ?? 6,
-  buyIn: prev.buyIn ?? 100, setup: false,
+  buyIn: prev.buyIn ?? 100, setup: false, heroPos: null,
+  seatOrder: Array((prev.seats ?? 6) - 1).fill(null),
   players: [], hands: [], ledger: { H: { buyIns: [prev.buyIn ?? 100], stack: null } },
 });
 

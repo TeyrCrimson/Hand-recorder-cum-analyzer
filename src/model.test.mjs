@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import { posNames, nextPos, newSession, newHand, toCall, potEstimate, activeStreet,
   usedCards, fmtAmt, newPlayer, PLAYER_TYPES, playerStats,
   actionOrder, livePositions, actionOn, handOver, ledgerNet,
-  heroCommit, netEstimate, guessPlayerAt } from "./model.js";
+  heroCommit, netEstimate, guessPlayerAt, seatOrderOf, playerAt } from "./model.js";
 
 const close = (a, b, e = 1e-9) => assert.ok(Math.abs(a - b) < e, `${a} != ${b}`);
 
@@ -105,6 +105,29 @@ assert.equal(actionOn(ho, 6, "p"), "BB");
 const hl = { ...newHand(s), villains: [{ label: "V1", cards: "unknown", playerId: null }],
   events: [{ st: "p", actor: "V1", a: "C" }] };
 assert.equal(actionOn(hl, 6, "p"), null);
+
+/* hero position picked at setup drives the first hand only */
+const sh = { ...newSession(), heroPos: "CO" };
+assert.equal(newHand(sh).pos, "CO");
+sh.hands.push({ ...newHand(sh) });                 // CO recorded
+assert.equal(newHand(sh).pos, "BTN");              // then rotation takes over
+assert.equal(newHand({ ...newSession(), heroPos: "XX" }).pos, "BTN"); // stale -> default
+
+/* seat map: players clockwise from hero decide positions each hand */
+const sm = { ...newSession(), seats: 6, seatOrder: ["a", null, "b", null, null] };
+assert.equal(seatOrderOf(sm).length, 5);
+assert.equal(seatOrderOf({ ...sm, seats: 4 }).length, 3);   // resize absorbed on read
+const hBTN = { ...newHand(sm), pos: "BTN" };
+assert.equal(playerAt(sm, hBTN, "SB"), "a");   // 1 seat clockwise from hero
+assert.equal(playerAt(sm, hBTN, "UTG"), "b");  // 3 seats clockwise
+assert.equal(playerAt(sm, hBTN, "BB"), null);  // empty seat
+assert.equal(playerAt(sm, hBTN, "BTN"), null); // hero's own seat
+const hSB = { ...newHand(sm), pos: "SB" };     // button moved: same seats, new names
+assert.equal(playerAt(sm, hSB, "BB"), "a");
+assert.equal(playerAt(sm, hSB, "HJ"), "b");
+/* sessions without a seat map fall back to rotation inference */
+assert.equal(playerAt({ ...sm, seatOrder: undefined, players: [], hands: [] },
+  hBTN, "SB"), null);
 
 /* villain link carried forward with the button rotation */
 const sp = { ...newSession(), players: [] };

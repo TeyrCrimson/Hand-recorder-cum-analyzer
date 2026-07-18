@@ -2,8 +2,8 @@ import { useState, useEffect, useRef } from "react";
 import { RANKS, SUITS, SUIT_CHAR, SUIT_COLOR, rVal, cid, cV, cS } from "./poker.js";
 import { STREETS, STREET_NAME, ACTIONS, posNames, newSession, newHand, toCall,
   potEstimate, fmtAmt, usedCards, activeStreet, exportSession, newPlayer,
-  PLAYER_TYPES, playerStats, actionOrder, livePositions, actionOn, handOver,
-  ledgerNet, netEstimate, guessPlayerAt } from "./model.js";
+  PLAYER_TYPES, playerStats, actionOrder, actionOn, handOver,
+  ledgerNet, netEstimate, playerAt, seatOrderOf, nextPos } from "./model.js";
 
 const C = { bg: "#0E1512", panel: "#18211C", line: "#2A362F", text: "#E8EDE9",
   dim: "#8FA096", gold: "#E0B34A", red: "#E4574F", green: "#55B36A" };
@@ -335,63 +335,117 @@ function LedgerSummary({ session, patch }) {
     </div>);
 }
 
-/* ---------- Session player roster ---------- */
+/* ---------- Seat-based roster: players clockwise from hero ---------- */
 function Roster({ session, patch }) {
   const [openId, setOpenId] = useState(null);   // player expanded for editing
   const [confirm, setConfirm] = useState(null);
   const players = session.players ?? [];
+  const names = posNames(session.seats);
+  const base = nextPos(session);                // hero's next-hand position
+  const order = seatOrderOf(session);
+  const posOf = (k) => names[(names.indexOf(base) + k + 1) % names.length];
   const upd = (id, fn) => patch((s) => ({ ...s,
     players: s.players.map((p) => (p.id === id ? fn(p) : p)) }));
+  const swap = (a, b) => {
+    if (b < 0 || b >= order.length) return;
+    const o = [...order]; [o[a], o[b]] = [o[b], o[a]];
+    patch((s) => ({ ...s, seatOrder: o }));
+  };
+  const addAt = (k) => { const p = newPlayer();
+    patch((s) => { const o = seatOrderOf(s); o[k] = p.id;
+      return { ...s, players: [...(s.players ?? []), p], seatOrder: o,
+        ledger: { ...(s.ledger ?? {}),
+          [p.id]: { buyIns: [+s.buyIn || 100], stack: null } } }; });
+    setOpenId(p.id); };
+  const del = (p) => patch((s) => {
+    const { [p.id]: _, ...ledger } = s.ledger ?? {};
+    return { ...s, ledger, players: s.players.filter((x) => x.id !== p.id),
+      seatOrder: seatOrderOf(s).map((id) => (id === p.id ? null : id)) }; });
+  const arrow = (on, label) => ({ background: "none", color: C.dim, fontSize: 14,
+    border: `1px solid ${C.line}`, borderRadius: 6, padding: "4px 8px",
+    opacity: on ? 1 : 0.25 });
+
+  const card = (p, k) => {
+    const st = playerStats(session, p.id);
+    return (
+      <div key={p.id} style={{ background: C.panel, borderRadius: 10,
+        padding: 10, marginBottom: 6 }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+          {k != null && <span style={{ ...lbl, color: C.gold, minWidth: 40,
+            fontFamily: "ui-monospace, monospace" }}>{posOf(k)}</span>}
+          <button onClick={() => setOpenId(openId === p.id ? null : p.id)}
+            style={{ flex: 1, textAlign: "left", background: "none",
+              border: "none", color: C.text, fontSize: 14 }}>
+            {p.name || "(unnamed)"}
+            <span style={{ color: C.gold, fontFamily: "ui-monospace, monospace",
+              marginLeft: 8, fontSize: 12 }}>{p.type}</span>
+            <span style={{ color: C.dim, fontSize: 11, marginLeft: 8 }}>
+              {st.tracked} hand{st.tracked === 1 ? "" : "s"}</span>
+            {p.note && openId !== p.id &&
+              <div style={{ fontSize: 11, color: C.dim }}>{p.note}</div>}
+          </button>
+          {k != null && <>
+            <button onClick={() => swap(k, k - 1)} style={arrow(k > 0)}>↑</button>
+            <button onClick={() => swap(k, k + 1)}
+              style={arrow(k < order.length - 1)}>↓</button>
+          </>}
+          <button onClick={() => confirm === p.id
+              ? (del(p), setConfirm(null)) : setConfirm(p.id)}
+            style={{ background: "none", border: "none", color: C.red,
+              fontSize: 12 }}>
+            {confirm === p.id ? "sure?" : "✕"}</button>
+        </div>
+        {openId === p.id && (
+          <div style={{ marginTop: 8 }}>
+            <Field label="Name" value={p.name}
+              onChange={(v) => upd(p.id, (x) => ({ ...x, name: v }))} />
+            <div style={{ display: "flex", gap: 5, flexWrap: "wrap", marginBottom: 8 }}>
+              {PLAYER_TYPES.map((t) => (
+                <Chip key={t} on={p.type === t}
+                  onClick={() => upd(p.id, (x) => ({ ...x, type: t }))}>{t}</Chip>))}
+            </div>
+            <Field label="Notes (tendencies, tells, sizing habits...)" value={p.note}
+              onChange={(v) => upd(p.id, (x) => ({ ...x, note: v }))} />
+            <StatLine st={st} />
+          </div>)}
+      </div>);
+  };
 
   return (
     <div>
-      <Sec>Players</Sec>
-      {players.map((p) => {
-        const st = playerStats(session, p.id);
-        return (
-        <div key={p.id} style={{ background: C.panel, borderRadius: 10,
-          padding: 10, marginBottom: 6 }}>
-          <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-            <button onClick={() => setOpenId(openId === p.id ? null : p.id)}
-              style={{ flex: 1, textAlign: "left", background: "none",
-                border: "none", color: C.text, fontSize: 14 }}>
-              {p.name || "(unnamed)"}
-              <span style={{ color: C.gold, fontFamily: "ui-monospace, monospace",
-                marginLeft: 8, fontSize: 12 }}>{p.type}</span>
-              <span style={{ color: C.dim, fontSize: 11, marginLeft: 8 }}>
-                {st.tracked} hand{st.tracked === 1 ? "" : "s"}</span>
-              {p.note && openId !== p.id &&
-                <div style={{ fontSize: 11, color: C.dim }}>{p.note}</div>}
-            </button>
-            <button onClick={() => confirm === p.id
-                ? (patch((s) => { const { [p.id]: _, ...ledger } = s.ledger ?? {};
-                     return { ...s, ledger,
-                       players: s.players.filter((x) => x.id !== p.id) }; }),
-                   setConfirm(null))
-                : setConfirm(p.id)}
-              style={{ background: "none", border: "none", color: C.red, fontSize: 12 }}>
-              {confirm === p.id ? "sure?" : "✕"}</button>
-          </div>
-          {openId === p.id && (
-            <div style={{ marginTop: 8 }}>
-              <Field label="Name / seat" value={p.name}
-                onChange={(v) => upd(p.id, (x) => ({ ...x, name: v }))} />
-              <div style={{ display: "flex", gap: 5, flexWrap: "wrap", marginBottom: 8 }}>
-                {PLAYER_TYPES.map((t) => (
-                  <Chip key={t} on={p.type === t}
-                    onClick={() => upd(p.id, (x) => ({ ...x, type: t }))}>{t}</Chip>))}
-              </div>
-              <Field label="Notes (tendencies, tells, sizing habits...)" value={p.note}
-                onChange={(v) => upd(p.id, (x) => ({ ...x, note: v }))} />
-              <StatLine st={st} />
-            </div>)}
-        </div>); })}
-      <Chip onClick={() => { const p = newPlayer();
-          patch((s) => ({ ...s, players: [...(s.players ?? []), p],
-            ledger: { ...(s.ledger ?? {}),
-              [p.id]: { buyIns: [+s.buyIn || 100], stack: null } } }));
-          setOpenId(p.id); }}
-        style={{ width: "100%" }}>＋ Add player</Chip>
+      <Sec>Table · seats clockwise from you</Sec>
+      <div style={{ display: "flex", gap: 8, alignItems: "center", marginBottom: 8 }}>
+        <span style={lbl}>Size</span>
+        <select value={session.seats}
+          onChange={(e) => patch((s) => ({ ...s, seats: +e.target.value }))}
+          style={{ padding: 8, borderRadius: 6, background: C.bg,
+            border: `1px solid ${C.line}`, color: C.text, fontSize: 13 }}>
+          {Array.from({ length: 11 }, (_, i) => i + 2).map((n) => (
+            <option key={n} value={n}>{n}-max</option>))}
+        </select>
+        {session.hands.length === 0 && (
+          <span style={{ fontSize: 11, color: C.dim }}>
+            pick your position →</span>)}
+      </div>
+      {session.hands.length === 0 && (
+        <div style={{ display: "flex", gap: 5, flexWrap: "wrap", marginBottom: 8 }}>
+          {names.map((p) => (
+            <Chip key={p} on={base === p}
+              onClick={() => patch((s) => ({ ...s, heroPos: p }))}>{p}</Chip>))}
+        </div>)}
+      {order.map((pid, k) => {
+        const p = players.find((x) => x.id === pid);
+        return p ? card(p, k) : (
+          <div key={`empty${k}`} style={{ display: "flex", alignItems: "center",
+            gap: 8, background: C.panel, borderRadius: 10, padding: 10,
+            marginBottom: 6, opacity: 0.7 }}>
+            <span style={{ ...lbl, color: C.gold, minWidth: 40,
+              fontFamily: "ui-monospace, monospace" }}>{posOf(k)}</span>
+            <span style={{ flex: 1, fontSize: 12, color: C.dim }}>empty seat</span>
+            <Chip onClick={() => addAt(k)}>＋ player</Chip>
+          </div>);
+      })}
+      {players.filter((p) => !order.includes(p.id)).map((p) => card(p, null))}
     </div>);
 }
 
@@ -450,7 +504,6 @@ function HandEditor({ session, hand, patch, patchSession, back, next }) {
   const bb = session.unit === "bb" ? 1 : session.bb;
   const pot = potEstimate(hand, session);
   const legacy = hand.events.some((e) => /^V\d$/.test(e.actor)); // pre-pager hands
-  const heroLive = livePositions(hand, seats).includes(hand.pos);
   const posOf = (actor) => actor === "H" ? hand.pos
     : hand.villains.find((v) => v.label === actor)?.pos ?? actor;
 
@@ -465,12 +518,11 @@ function HandEditor({ session, hand, patch, patchSession, back, next }) {
       let villains = h.villains;
       if (!legacy && actor !== "H" && a !== "F" && !villains.some((v) => v.pos === pos))
         villains = [...villains, { label: pos, pos, cards: "unknown",
-          playerId: guessPlayerAt(session, h, pos) }]; // carried forward with the button
+          playerId: playerAt(session, h, pos) }]; // from the seat map
       return { ...h, villains, events: [...h.events,
         { st, actor, a, ...(amt != null ? { amt: +amt } : {}) }] };
     });
     setOverride(null); setPending(null); setCustom("");
-    if (actor === "H" && a === "F") return goto(4); // hero out -> fill in your hand
     /* auto-advance when this action closes the street (and its board is set) */
     if (legacy) return;
     const ev = { st, actor, a, ...(amt != null ? { amt: +amt } : {}) };
@@ -597,7 +649,7 @@ function HandEditor({ session, hand, patch, patchSession, back, next }) {
     const quick = st === "p" ? [2, 2.5, 3, 3.5].map((m) => m * bb)
       : [1 / 3, 1 / 2, 2 / 3, 1].map((f) => +(f * pot).toFixed(1));
     const evs = idxEvents.filter(({ e }) => e.st === st);
-    const done = handOver(hand, seats) || !heroLive || st === "r";
+    const done = handOver(hand, seats) || st === "r";
     return (
       <div key={st} style={pageStyle}>
         {st === "p" ? <><Sec>Your position</Sec>{posChips}</> : <>

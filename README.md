@@ -36,10 +36,13 @@ docs/hand-recorder-plan.md  # original design doc
   alongside the board (you're prompted there when you fold or reach the
   river); tapping won/lost prefills an estimated net (~) from the pot and
   hero's commitment — editable, and chop stays manual.
-- Session start: table setup gates recording — add your villains to the
-  roster first (buy-in ledger rows are created with them). The session screen
-  shows per-player P/L (net = current stack − buy-ins); losing an all-in
-  prompts a rebuy on save.
+- Session start: table setup gates recording — pick your position, then fill
+  the seats clockwise from you (one row per seat, capped by the table size,
+  which is adjustable in place; ↑/↓ shift a player between seats). The seat
+  map drives villain auto-linking exactly; hands recorded before a seating
+  change keep their stored links. Buy-in ledger rows are created with the
+  players; the session screen shows per-player P/L (net = current stack −
+  buy-ins), and losing an all-in prompts a rebuy on save.
 - Fewest-taps: position auto-rotates per hand; Fold/Check/Call are 1 tap;
   Bet/Raise are 2 (action + amount chip); cards are 2 taps (rank, then suit).
   Amount chips: bb multiples preflop, pot fractions postflop.

@@ -106,12 +106,15 @@ export default function App() {
           back={() => setView({ screen: "sessions" })}
           openHand={(hid) => setView({ screen: "hand", sid: session.id, hid })} />)}
       {view.screen === "hand" && session && (
-        <HandEditor session={session}
+        <HandEditor key={view.hid} session={session}
           hand={session.hands.find((h) => h.id === view.hid)}
           patch={(fn) => patchSession(session.id, (s) => ({ ...s,
             hands: s.hands.map((h) => (h.id === view.hid ? fn(h) : h)) }))}
           patchSession={(fn) => patchSession(session.id, fn)}
-          back={() => setView({ screen: "session", sid: session.id })} />)}
+          back={() => setView({ screen: "session", sid: session.id })}
+          next={() => { const h = newHand(session);
+            patchSession(session.id, (s) => ({ ...s, hands: [...s.hands, h] }));
+            setView({ screen: "hand", sid: session.id, hid: h.id }); }} />)}
     </div>);
 }
 
@@ -425,7 +428,7 @@ const PAGE_LABEL = { p: "Pre", f: "Flop", t: "Turn", r: "River", sum: "End" };
 const pageStyle = { flex: "0 0 100%", scrollSnapAlign: "start", minWidth: 0,
   boxSizing: "border-box", padding: "0 2px" };
 
-function HandEditor({ session, hand, patch, patchSession, back }) {
+function HandEditor({ session, hand, patch, patchSession, back, next }) {
   const [pending, setPending] = useState(null);   // "B"|"R"|"A" awaiting amount
   const [custom, setCustom] = useState("");
   const [picker, setPicker] = useState(null);     // {target, need, label}
@@ -434,6 +437,7 @@ function HandEditor({ session, hand, patch, patchSession, back }) {
   const [page, setPage] = useState(0);
   const [rebuys, setRebuys] = useState(null);     // busted-player prompts on save
   const pagerRef = useRef(null);
+  const afterSave = useRef(back);                 // where saving exits to
 
   useEffect(() => { // land on the live street when (re)opening a hand
     const el = pagerRef.current;
@@ -466,7 +470,15 @@ function HandEditor({ session, hand, patch, patchSession, back }) {
         { st, actor, a, ...(amt != null ? { amt: +amt } : {}) }] };
     });
     setOverride(null); setPending(null); setCustom("");
-    if (actor === "H" && a === "F") goto(4); // hero out -> fill in your hand
+    if (actor === "H" && a === "F") return goto(4); // hero out -> fill in your hand
+    /* auto-advance when this action closes the street (and its board is set) */
+    if (legacy) return;
+    const ev = { st, actor, a, ...(amt != null ? { amt: +amt } : {}) };
+    const sim = { ...hand, events: [...hand.events, ev] };
+    if (actionOn(sim, seats, st) != null) return;
+    if (handOver(sim, seats) || st === "r") goto(4);
+    else if (st === "p" || hand.board[st].length === (st === "f" ? 3 : 1))
+      goto(PAGES.indexOf(st) + 1);
   };
   const delEvent = (i) => {
     patch((h) => ({ ...h, events: h.events.filter((_, k) => k !== i) }));
@@ -476,8 +488,9 @@ function HandEditor({ session, hand, patch, patchSession, back }) {
   /* save & back: any all-in may mean a bust — offer rebuys into the ledger.
      ponytail: no stack simulation; every all-in participant is prompted
      (except hero when the hand wasn't lost) and "no" is one tap. */
-  const saveBack = () => {
-    if (!session.ledger) return back();
+  const saveBack = (exit = back) => {
+    afterSave.current = exit;
+    if (!session.ledger) return exit();
     const allin = [...new Set(hand.events.filter((e) => e.a === "A")
       .map((e) => e.actor))];
     const rows = allin.flatMap((a) => {
@@ -488,7 +501,7 @@ function HandEditor({ session, hand, patch, patchSession, back }) {
       return [{ actor: a, playerId: v?.playerId ?? null,
         name: linked?.name || v?.pos || a }];
     });
-    rows.length ? setRebuys(rows) : back();
+    rows.length ? setRebuys(rows) : exit();
   };
   const addRebuy = (pid, amt) => patchSession((s) => ({ ...s,
     ledger: { ...s.ledger, [pid]: {
@@ -496,7 +509,7 @@ function HandEditor({ session, hand, patch, patchSession, back }) {
       stack: s.ledger[pid]?.stack ?? null } } }));
   const dropRebuy = (i) => {
     const n = rebuys.filter((_, k) => k !== i);
-    n.length ? setRebuys(n) : back();
+    n.length ? setRebuys(n) : afterSave.current();
   };
 
   const setCards = (target, id) => patch((h) => {
@@ -672,11 +685,17 @@ function HandEditor({ session, hand, patch, patchSession, back }) {
         <Sec>Full timeline — tap twice to remove</Sec>
         {timeline(idxEvents)}
       </>}
+      <div style={{ display: "flex", gap: 8, marginTop: 20 }}>
+        <Chip on onClick={() => saveBack(next)} style={{ flex: 1, padding: 14 }}>
+          Next hand ›</Chip>
+        <Chip onClick={() => saveBack(back)} style={{ flex: 1, padding: 14 }}>
+          End session</Chip>
+      </div>
     </div>);
 
   return (
     <div>
-      <button onClick={saveBack} style={linkBtn}>‹ save & back</button>
+      <button onClick={() => saveBack(back)} style={linkBtn}>‹ save & back</button>
 
       <div style={{ display: "flex", gap: 4, margin: "8px 0" }}>
         {PAGES.map((p, i) => (
@@ -699,8 +718,16 @@ function HandEditor({ session, hand, patch, patchSession, back }) {
           onClose={() => setPicker(null)}
           onPick={(id) => {
             setCards(picker.target, id);
-            if (picker.need <= 1) setPicker(null);
-            else setPicker({ ...picker, need: picker.need - 1 });
+            if (picker.need > 1)
+              return setPicker({ ...picker, need: picker.need - 1 });
+            setPicker(null);
+            /* actions were recorded before the board: last card advances */
+            const st = picker.target;
+            if (!legacy && STREETS.includes(st) &&
+                hand.events.some((e) => e.st === st) &&
+                actionOn(hand, seats, st) == null)
+              goto(handOver(hand, seats) || st === "r" ? 4
+                : PAGES.indexOf(st) + 1);
           }} />)}
 
       {rebuys && (

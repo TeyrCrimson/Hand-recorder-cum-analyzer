@@ -25,7 +25,9 @@ docs/hand-recorder-plan.md  # original design doc
 
 ## Design notes
 - Recording flow: a swipeable pager of street pages (Pre → Flop → Turn →
-  River → End). The app runs the action order like a dealer: preflop starts
+  River → End); pages auto-advance when a street's action closes and its
+  board cards are set, and the End page's "Next hand ›" / "End session"
+  buttons chain hands or exit to the session P/L. The app runs the action order like a dealer: preflop starts
   UTG, postflop starts with the first live seat; folds remove seats, raises
   re-open action; the gold chip is whose turn it is (tap another live seat to
   override). A villain is created the first time a position puts money in,

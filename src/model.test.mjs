@@ -3,8 +3,8 @@ import assert from "node:assert/strict";
 import { posNames, nextPos, newSession, newHand, toCall, potEstimate, activeStreet,
   usedCards, fmtAmt, newPlayer, PLAYER_TYPES, playerStats,
   actionOrder, livePositions, actionOn, handOver, ledgerNet,
-  heroCommit, netEstimate, guessPlayerAt, seatOrderOf, playerAt, validActions }
-  from "./model.js";
+  heroCommit, netEstimate, guessPlayerAt, seatOrderOf, playerAt, validActions,
+  allInAmt } from "./model.js";
 
 const close = (a, b, e = 1e-9) => assert.ok(Math.abs(a - b) < e, `${a} != ${b}`);
 
@@ -120,7 +120,50 @@ eq(validActions(hv1, s, "p", "BB"), ["F", "A", "X", "R"]);   // BB option: check
 const hv2 = { ...hv0, events: [{ st: "f", actor: "SB", a: "B", amt: 4 }] };
 eq(validActions(hv2, s, "f", "BTN"), ["F", "A", "C", "R"]);  // facing a bet: no Bet/Check
 const hv3 = { ...hv0, events: [{ st: "f", actor: "SB", a: "A", amt: 40 }] };
-eq(validActions(hv3, s, "f", "BTN"), ["F", "A"]);            // facing all-in: fold or all-in
+eq(validActions(hv3, s, "f", "BTN"), ["F", "A"]);            // stack unknown: fold or all-in
+/* stack-aware facing-all-in (row 7a/7b) */
+const hv3a = { ...hv3, stacks: { BTN: 100 } };               // covers the shove
+eq(validActions(hv3a, s, "f", "BTN"), ["F", "A", "C", "R"]);
+close(allInAmt(hv3a, s, "f", "BTN"), 100);                   // reshove total
+const hv3b = { ...hv3, stacks: { BTN: 25 } };                // short stack
+eq(validActions(hv3b, s, "f", "BTN"), ["F", "A"]);
+close(allInAmt(hv3b, s, "f", "BTN"), 25);                    // for-less amount
+assert.equal(allInAmt(hv3, s, "f", "BTN"), null);            // unconfirmed
+/* commitment counts: raise to 3 then confirm 30 behind -> shove = 33 */
+const hv3c = { ...hv0, stacks: { UTG: 30 }, events: [
+  { st: "p", actor: "UTG", a: "R", amt: 3 }, { st: "p", actor: "HJ", a: "R", amt: 9 }] };
+close(allInAmt(hv3c, s, "p", "UTG"), 33);
+
+/* row 9: an all-in at/below the current bet is a call — no re-open */
+const hq = { ...hv0, events: [
+  { st: "p", actor: "UTG", a: "A", amt: 20 }, { st: "p", actor: "HJ", a: "A", amt: 20 },
+  { st: "p", actor: "CO", a: "F" }, { st: "p", actor: "H", a: "F" },
+  { st: "p", actor: "SB", a: "F" }, { st: "p", actor: "BB", a: "A", amt: 20 }] };
+assert.equal(actionOn(hq, 6, "p"), null);   // nobody re-asked (esp. not UTG)
+/* a for-less all-in must not lower the to-call */
+const hfl = { ...hv0, events: [{ st: "p", actor: "UTG", a: "A", amt: 20 },
+  { st: "p", actor: "HJ", a: "A", amt: 8 }] };
+assert.equal(toCall(hfl, "p"), 20);
+/* row 8: all all-in -> later streets have no action at all */
+assert.equal(actionOn(hq, 6, "f"), null);
+assert.equal(actionOn(hq, 6, "t"), null);
+assert.ok(!handOver(hq, 6));                // pot is contested, hand not over
+/* raise OVER a short shove re-opens, but the shover can't respond */
+const hr = { ...hv0, events: [
+  { st: "p", actor: "UTG", a: "A", amt: 5 }, { st: "p", actor: "HJ", a: "R", amt: 15 }] };
+assert.equal(actionOn(hr, 6, "p"), "CO");
+hr.events.push({ st: "p", actor: "CO", a: "F" }, { st: "p", actor: "H", a: "F" },
+  { st: "p", actor: "SB", a: "F" }, { st: "p", actor: "BB", a: "C" });
+assert.equal(actionOn(hr, 6, "p"), null);   // UTG (all-in) skipped, street closed
+/* two players with chips remain (BB, HJ): flop action continues without UTG */
+assert.equal(actionOn(hr, 6, "f"), "BB");
+/* but caller with chips vs only all-ins: streets run out with no action */
+const hro = { ...hv0, events: [
+  { st: "p", actor: "UTG", a: "A", amt: 5 }, { st: "p", actor: "HJ", a: "A", amt: 15 },
+  { st: "p", actor: "CO", a: "F" }, { st: "p", actor: "H", a: "F" },
+  { st: "p", actor: "SB", a: "F" }, { st: "p", actor: "BB", a: "C" }] };
+assert.equal(actionOn(hro, 6, "p"), null);
+assert.equal(actionOn(hro, 6, "f"), null);  // BB alone with chips: nobody to bet
 const hstv = { ...hv0, events: [{ st: "p", actor: "UTG", a: "S", amt: 2 },
   { st: "p", actor: "HJ", a: "C" }, { st: "p", actor: "CO", a: "F" },
   { st: "p", actor: "H", a: "C" }, { st: "p", actor: "SB", a: "F" },

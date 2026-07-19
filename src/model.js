@@ -81,6 +81,7 @@ export const newHand = (session) => ({
   id: crypto.randomUUID(), ts: Date.now(), pos: nextPos(session),
   hole: [], board: { f: [], t: [], r: [] }, events: [],
   villains: [], result: null, net: null,
+  stacks: {}, // pos -> remaining stack confirmed at all-in time (pre-commit)
 });
 
 export const newSession = (prev = {}) => ({
@@ -127,31 +128,46 @@ export function livePositions(hand, seats) {
     tracking bet sizes to get the real rule isn't worth it. */
 export function actionOn(hand, seats, st) {
   const before = STREETS.indexOf(st);
-  const dead = new Set();
-  for (const e of hand.events)
-    if (STREETS.indexOf(e.st) < before && e.a === "F") {
-      const p = actorPos(hand, e.actor);
-      if (!p) return null;
-      dead.add(p);
-    }
-  let live = actionOrder(seats, st).filter((p) => !dead.has(p));
-  let pending = [...live];
+  const dead = new Set(), allin = new Set();
+  for (const e of hand.events) {
+    if (STREETS.indexOf(e.st) >= before) continue;
+    const p = actorPos(hand, e.actor);
+    if (!p) return null;
+    if (e.a === "F") dead.add(p);
+    else if (e.a === "A") allin.add(p); // all-in earlier: never acts again
+  }
+  let live = actionOrder(seats, st).filter((p) => !dead.has(p) && !allin.has(p));
+  if (live.length < 2) return null; // runout / hand decided: no more betting
+  let pending = [...live], aggro = 0;
+  const stAllin = new Set(); // all-in this street: can't respond to raises
   for (const e of hand.events.filter((e) => e.st === st)) {
     const p = actorPos(hand, e.actor);
     if (!p) return null;
+    if (e.a === "A") stAllin.add(p);
     if (e.a === "F") {
       live = live.filter((x) => x !== p);
       pending = pending.filter((x) => x !== p);
     } else if (e.a === "S") {
       // blind raise WITH the option: straddler re-queued last
+      aggro = Math.max(aggro, e.amt ?? 0);
       const i = live.indexOf(p);
       pending = [...live.slice(i + 1), ...live.slice(0, i), p];
-    } else if ("BRA".includes(e.a)) {
+    } else if ("BRA".includes(e.a) && e.amt != null && e.amt > aggro) {
+      // a real raise re-opens; an all-in at/below the bet is a call
+      aggro = e.amt;
       const i = live.indexOf(p);
-      pending = [...live.slice(i + 1), ...live.slice(0, i)];
+      pending = [...live.slice(i + 1), ...live.slice(0, i)]
+        .filter((x) => !stAllin.has(x));
     } else pending = pending.filter((x) => x !== p);
   }
   return live.length > 1 ? pending[0] ?? null : null;
+}
+
+/** Total this player puts in if all-in now: street commitment + confirmed
+    remaining stack. null until the stack is confirmed for this hand. */
+export function allInAmt(hand, session, st, pos) {
+  const S = hand.stacks?.[pos];
+  return S == null ? null : committedOn(hand, session, st, pos) + S;
 }
 
 export const handOver = (hand, seats) => livePositions(hand, seats).length <= 1;
@@ -175,8 +191,9 @@ export function ledgerNet(session) {
 /** Last aggressive amount on a street (what a Call matches). */
 export function toCall(hand, st, bbAmt = 1) {
   let amt = st === "p" ? bbAmt : 0; // preflop opens facing the blind
-  for (const e of hand.events)
-    if (e.st === st && "BRAS".includes(e.a) && e.amt != null) amt = e.amt;
+  for (const e of hand.events)   // max, not last: a for-less all-in never lowers it
+    if (e.st === st && "BRAS".includes(e.a) && e.amt != null)
+      amt = Math.max(amt, e.amt);
   return amt;
 }
 
@@ -228,7 +245,13 @@ export function validActions(hand, session, st, pos) {
   const bb = session.unit === "bb" ? 1 : session.bb;
   const agg = hand.events.filter((e) =>
     e.st === st && "BRAS".includes(e.a) && e.amt != null);
-  if (agg.length && agg[agg.length - 1].a === "A") return new Set(["F", "A"]);
+  if (agg.length && agg[agg.length - 1].a === "A") {
+    // facing a shove: full options only for a confirmed covering stack;
+    // short or unconfirmed stack -> fold / all-in(-for-less)
+    const total = allInAmt(hand, session, st, pos);
+    return total != null && total > toCall(hand, st, bb)
+      ? new Set(["F", "A", "C", "R"]) : new Set(["F", "A"]);
+  }
   const facing = toCall(hand, st, bb) > committedOn(hand, session, st, pos);
   return new Set(facing ? ["F", "A", "C", "R"]
     : st === "p" ? ["F", "A", "X", "R"] : ["F", "A", "X", "B"]);

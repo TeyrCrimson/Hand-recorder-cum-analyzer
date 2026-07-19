@@ -3,8 +3,8 @@ import { RANKS, SUITS, SUIT_CHAR, SUIT_COLOR, rVal, cid, cV, cS } from "./poker.
 import { STREETS, STREET_NAME, ACTIONS, posNames, newSession, newHand, toCall,
   potEstimate, fmtAmt, usedCards, activeStreet, exportSession, newPlayer,
   PLAYER_TYPES, playerStats, actionOrder, actionOn, handOver,
-  ledgerNet, netEstimate, playerAt, seatOrderOf, nextPos, validActions }
-  from "./model.js";
+  ledgerNet, netEstimate, playerAt, seatOrderOf, nextPos, validActions,
+  allInAmt } from "./model.js";
 
 const C = { bg: "#0E1512", panel: "#18211C", line: "#2A362F", text: "#E8EDE9",
   dim: "#8FA096", gold: "#E0B34A", red: "#E4574F", green: "#55B36A" };
@@ -491,6 +491,7 @@ function HandEditor({ session, hand, patch, patchSession, back, next }) {
   const [override, setOverride] = useState(null); // manual "whose turn" pick
   const [page, setPage] = useState(0);
   const [rebuys, setRebuys] = useState(null);     // busted-player prompts on save
+  const [stackAsk, setStackAsk] = useState(null); // {pos, st, act}: confirm stack
   const pagerRef = useRef(null);
   const afterSave = useRef(back);                 // where saving exits to
 
@@ -563,6 +564,39 @@ function HandEditor({ session, hand, patch, patchSession, back, next }) {
   const dropRebuy = (i) => {
     const n = rebuys.filter((_, k) => k !== i);
     n.length ? setRebuys(n) : afterSave.current();
+  };
+
+  /* ledger key for a position: hero -> "H", villain -> linked playerId */
+  const ledgerKeyOf = (pos) => pos === hand.pos ? "H"
+    : hand.villains.find((v) => v.pos === pos)?.playerId ?? playerAt(session, hand, pos);
+  /* confirm a remaining stack: store on the hand (drives legality/amounts)
+     and write through to the session ledger (stack calibration) */
+  const confirmStack = () => {
+    const v = +custom;
+    if (custom === "" || isNaN(v) || v < 0) return;
+    const { pos, st, act } = stackAsk;
+    patch((h) => ({ ...h, stacks: { ...(h.stacks ?? {}), [pos]: v } }));
+    const key = ledgerKeyOf(pos);
+    if (key && session.ledger)
+      patchSession((s) => ({ ...s, ledger: { ...s.ledger, [key]: {
+        buyIns: s.ledger[key]?.buyIns ?? [], stack: v } } }));
+    setStackAsk(null); setCustom("");
+    const h2 = { ...hand, stacks: { ...(hand.stacks ?? {}), [pos]: v } };
+    const legal = validActions(h2, session, st, pos);
+    if (act === "A" || !legal.has(act))      // short stack: continue = all-in for less
+      addEvent(st, "A", allInAmt(h2, session, st, pos));
+    else if (act === "C") addEvent(st, "C");
+    else if (act === "R") setPending("R");
+  };
+  const skipStack = () => {
+    const { st, act } = stackAsk;
+    setStackAsk(null); setCustom("");
+    if (act !== "A") return;                 // C/R stay gated until confirmed
+    const agg = hand.events.filter((e) =>
+      e.st === st && "BRAS".includes(e.a) && e.amt != null);
+    if (agg.length && agg[agg.length - 1].a === "A")
+      addEvent(st, "A", toCall(hand, st, bb)); // call the shove at to-call
+    else setPending("A");                    // opening shove: manual amount
   };
 
   const setCards = (target, id) => patch((h) => {
@@ -691,13 +725,38 @@ function HandEditor({ session, hand, patch, patchSession, back, next }) {
                 const ok = !valid || k === "S" || valid.has(k);
                 return (
                   <Chip key={k} on={pending === k}
-                    onClick={() => { if (!ok) return;
-                      if (k === "A" && facingA)         // call the shove
+                    onClick={() => {
+                      const isPos = !legacy && cur != null;
+                      /* all-in involved + stack unconfirmed -> ask first */
+                      if (isPos && hand.stacks?.[cur] == null &&
+                          (k === "A" || (facingA && "CR".includes(k)))) {
+                        setCustom(String(session.ledger?.[ledgerKeyOf(cur)]?.stack ?? ""));
+                        return setStackAsk({ pos: cur, st, act: k });
+                      }
+                      if (!ok) return;
+                      if (k === "A" && isPos) {
+                        const amt = allInAmt(hand, session, st, cur);
+                        if (amt != null) return addEvent(st, "A", amt);
+                      }
+                      if (k === "A" && facingA)         // legacy: call the shove
                         return addEvent(st, "A", toCall(hand, st, bb));
                       "BRAS".includes(k) ? setPending(k) : addEvent(st, k); }}
                     style={ok ? {} : { opacity: 0.25 }}>
                     {name}</Chip>);
               })}
+          {stackAsk && stackAsk.st === st && (
+            <div style={{ display: "flex", gap: 6, alignItems: "center",
+              flexWrap: "wrap", marginTop: 8 }}>
+              <span style={{ fontSize: 12, color: C.gold }}>
+                {stackAsk.pos === hand.pos ? "Your" : stackAsk.pos + "'s"} remaining
+                stack?</span>
+              <input autoFocus type="number" inputMode="decimal" value={custom}
+                onChange={(e) => setCustom(e.target.value)}
+                style={{ width: 80, padding: 8, borderRadius: 6, background: C.bg,
+                  border: `1px solid ${C.gold}`, color: C.text }} />
+              <Chip on onClick={confirmStack}>set</Chip>
+              <Chip onClick={skipStack}>skip</Chip>
+            </div>)}
           </div>
           {pending && (
             <div style={{ display: "flex", gap: 5, marginTop: 8, alignItems: "center",
@@ -795,10 +854,10 @@ function HandEditor({ session, hand, patch, patchSession, back, next }) {
             if (picker.need > 1)
               return setPicker({ ...picker, need: picker.need - 1 });
             setPicker(null);
-            /* actions were recorded before the board: last card advances */
+            /* street already closed (actions first, or all-in runout):
+               completing the board card advances */
             const st = picker.target;
             if (!legacy && STREETS.includes(st) &&
-                hand.events.some((e) => e.st === st) &&
                 actionOn(hand, seats, st) == null)
               goto(handOver(hand, seats) || st === "r" ? 4
                 : PAGES.indexOf(st) + 1);

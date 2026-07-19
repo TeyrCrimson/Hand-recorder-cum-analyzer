@@ -43,6 +43,14 @@ docs/hand-recorder-plan.md  # original design doc
   change keep their stored links. Buy-in ledger rows are created with the
   players; the session screen shows per-player P/L (net = current stack −
   buy-ins), and losing an all-in prompts a rebuy on save.
+- All-ins: any all-in tap first asks that player's remaining stack (skippable;
+  prefilled from the ledger, and confirming writes back to it — stack
+  calibration). Confirmed stacks make every all-in amount automatic
+  (stack + street commitment) and re-enable Call/Raise vs a shove for
+  covering stacks; short stacks get all-in-for-less. An all-in at/below the
+  bet is a call (doesn't re-open action, doesn't lower the to-call), and
+  all-in players are skipped on later streets — with <2 stacks left, streets
+  are board-entry only.
 - Straddles: a "Straddle" action on an untouched preflop (restraddles stack);
   aggressive for pot/to-call math, but the straddler keeps the option (acts
   last preflop). One rule for all rooms — action starts after the straddler;

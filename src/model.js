@@ -89,10 +89,14 @@ export const newSession = (prev = {}) => ({
   name: new Date().toLocaleDateString(undefined, { month: "short", day: "numeric" }) + " session",
   unit: prev.unit ?? "bb", cur: prev.cur ?? "$",
   sb: prev.sb ?? 0.5, bb: prev.bb ?? 1, seats: prev.seats ?? 6,
-  buyIn: prev.buyIn ?? 100, setup: false, heroPos: null,
+  buyIn: prev.buyIn ?? 150, setup: false, heroPos: null,
   seatOrder: Array((prev.seats ?? 6) - 1).fill(null),
-  players: [], hands: [], ledger: { H: { buyIns: [prev.buyIn ?? 100], stack: null } },
+  players: [], hands: [], ledger: { H: { buyIns: [prev.buyIn ?? 150], stack: null } },
 });
+
+/** Default buy-in for a session: 150bb in the session's unit. */
+export const defaultBuyIn = (s) =>
+  +(150 * (s.unit === "cur" ? s.bb : 1)).toFixed(2);
 
 /** Resolve an event actor to a position name; null = legacy "Vn" actor
     with no pos (falls back to manual actor mode in the UI). */

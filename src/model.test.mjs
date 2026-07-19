@@ -4,7 +4,12 @@ import { posNames, nextPos, newSession, newHand, toCall, potEstimate, activeStre
   usedCards, fmtAmt, newPlayer, PLAYER_TYPES, playerStats,
   actionOrder, livePositions, actionOn, handOver, ledgerNet,
   heroCommit, netEstimate, guessPlayerAt, seatOrderOf, playerAt, validActions,
-  allInAmt } from "./model.js";
+  allInAmt, defaultBuyIn } from "./model.js";
+
+/* default buy-in: 150bb in the session's unit */
+assert.equal(defaultBuyIn({ unit: "bb", bb: 1 }), 150);
+assert.equal(defaultBuyIn({ unit: "cur", bb: 0.2 }), 30);
+assert.equal(defaultBuyIn({ unit: "cur", bb: 2 }), 300);
 
 const close = (a, b, e = 1e-9) => assert.ok(Math.abs(a - b) < e, `${a} != ${b}`);
 
@@ -237,7 +242,7 @@ assert.equal(guessPlayerAt(sp, g1, "CO"), null);     // first hand: no prior inf
 
 /* ledger */
 const sl = newSession();
-assert.deepEqual(ledgerNet(sl)[0], { key: "H", name: "Hero", invested: 100, stack: null, net: null });
+assert.deepEqual(ledgerNet(sl)[0], { key: "H", name: "Hero", invested: 150, stack: null, net: null });
 sl.ledger.H = { buyIns: [100, 50], stack: 0 };
 assert.equal(ledgerNet(sl)[0].net, -150);
 assert.deepEqual(ledgerNet({ ...sl, ledger: undefined }), []); // old sessions

@@ -4,7 +4,7 @@ import { STREETS, STREET_NAME, ACTIONS, posNames, newSession, newHand, toCall,
   potEstimate, fmtAmt, usedCards, activeStreet, exportSession, newPlayer,
   PLAYER_TYPES, playerStats, actionOrder, actionOn, handOver,
   ledgerNet, netEstimate, playerAt, seatOrderOf, nextPos, validActions,
-  allInAmt } from "./model.js";
+  allInAmt, defaultBuyIn } from "./model.js";
 
 const C = { bg: "#0E1512", panel: "#18211C", line: "#2A362F", text: "#E8EDE9",
   dim: "#8FA096", gold: "#E0B34A", red: "#E4574F", green: "#55B36A" };
@@ -129,6 +129,8 @@ function Sessions({ data, setData, open }) {
     const s = { ...newSession(last || {}), ...draft,
       sb: +(draft.sb ?? last?.sb ?? 0.5), bb: +(draft.bb ?? last?.bb ?? 1),
       seats: +(draft.seats ?? last?.seats ?? 6) };
+    s.buyIn = defaultBuyIn(s); // 150bb in the session's unit
+    s.ledger = { H: { buyIns: [s.buyIn], stack: null } };
     setData((d) => ({ sessions: [...d.sessions, s] }));
     setDraft(null); open(s.id);
   };
@@ -304,7 +306,7 @@ function LedgerSummary({ session, patch }) {
       <Sec>Buy-ins & P/L</Sec>
       <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
         <Field label={`Default buy-in (${session.unit === "bb" ? "bb" : session.cur})`}
-          value={session.buyIn ?? 100} num
+          value={session.buyIn ?? defaultBuyIn(session)} num
           onChange={(v) => patch((s) => ({ ...s, buyIn: +v || 0 }))} />
         <Chip onClick={() => patch((s) => ({ ...s, ledger: Object.fromEntries(
             Object.entries(s.ledger).map(([k, e]) =>
@@ -366,7 +368,7 @@ function Roster({ session, patch }) {
     patch((s) => { const o = seatOrderOf(s); o[k] = p.id;
       return { ...s, players: [...(s.players ?? []), p], seatOrder: o,
         ledger: { ...(s.ledger ?? {}),
-          [p.id]: { buyIns: [+s.buyIn || 100], stack: null } } }; });
+          [p.id]: { buyIns: [+s.buyIn || defaultBuyIn(s)], stack: null } } }; });
     setOpenId(p.id); };
   const del = (p) => patch((s) => {
     const { [p.id]: _, ...ledger } = s.ledger ?? {};

@@ -203,6 +203,37 @@ export function potEstimate(hand, session) {
   return pot;
 }
 
+/** Per-street commitment of one position (blinds included preflop). */
+function committedOn(hand, session, st, pos) {
+  const bbAmt = session.unit === "bb" ? 1 : session.bb;
+  const sbAmt = session.unit === "bb" ? session.sb / session.bb : session.sb;
+  let mine = st !== "p" ? 0 : pos === "BB" ? bbAmt : pos === "SB" ? sbAmt : 0;
+  let aggro = st === "p" ? bbAmt : 0;
+  for (const e of hand.events.filter((e) => e.st === st)) {
+    const p = actorPos(hand, e.actor);
+    if ("BRAS".includes(e.a) && e.amt != null) {
+      aggro = Math.max(aggro, e.amt);
+      if (p === pos) mine = Math.max(mine, e.amt);
+    } else if (e.a === "C" && p === pos) mine = Math.max(mine, aggro);
+  }
+  return mine;
+}
+
+/** Legal action codes for `pos` on street st. Fold is always allowed
+    (open-folds happen) and so is All-in. Facing an all-in collapses to
+    Fold / All-in — the call amount defaults to the to-call.
+    ponytail: true short-stack call amounts aren't tracked (stacks are
+    ledger-level, not live); correct via the timeline if it matters. */
+export function validActions(hand, session, st, pos) {
+  const bb = session.unit === "bb" ? 1 : session.bb;
+  const agg = hand.events.filter((e) =>
+    e.st === st && "BRAS".includes(e.a) && e.amt != null);
+  if (agg.length && agg[agg.length - 1].a === "A") return new Set(["F", "A"]);
+  const facing = toCall(hand, st, bb) > committedOn(hand, session, st, pos);
+  return new Set(facing ? ["F", "A", "C", "R"]
+    : st === "p" ? ["F", "A", "X", "R"] : ["F", "A", "X", "B"]);
+}
+
 /** Hero's total committed, same "~" approximation as potEstimate:
     per street, hero's largest commitment ("raise-to" semantics); preflop
     at least the blind if hero posted one (a call/raise already contains it). */

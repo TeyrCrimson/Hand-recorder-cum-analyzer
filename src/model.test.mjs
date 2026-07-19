@@ -3,7 +3,8 @@ import assert from "node:assert/strict";
 import { posNames, nextPos, newSession, newHand, toCall, potEstimate, activeStreet,
   usedCards, fmtAmt, newPlayer, PLAYER_TYPES, playerStats,
   actionOrder, livePositions, actionOn, handOver, ledgerNet,
-  heroCommit, netEstimate, guessPlayerAt, seatOrderOf, playerAt } from "./model.js";
+  heroCommit, netEstimate, guessPlayerAt, seatOrderOf, playerAt, validActions }
+  from "./model.js";
 
 const close = (a, b, e = 1e-9) => assert.ok(Math.abs(a - b) < e, `${a} != ${b}`);
 
@@ -105,6 +106,26 @@ assert.equal(actionOn(ho, 6, "p"), "BB");
 const hl = { ...newHand(s), villains: [{ label: "V1", cards: "unknown", playerId: null }],
   events: [{ st: "p", actor: "V1", a: "C" }] };
 assert.equal(actionOn(hl, 6, "p"), null);
+
+/* dealer rules: which actions are legal */
+const eq = (set, arr) => assert.deepEqual([...set].sort(), arr.sort());
+const hv0 = { ...newHand(s), pos: "BTN", villains: [], events: [] };
+eq(validActions(hv0, s, "p", "UTG"), ["F", "A", "C", "R"]);  // facing blind: no Bet/Check
+eq(validActions(hv0, s, "f", "SB"), ["F", "A", "X", "B"]);   // unopened flop: no Call/Raise
+const hv1 = { ...hv0, events: [
+  { st: "p", actor: "UTG", a: "C" }, { st: "p", actor: "HJ", a: "F" },
+  { st: "p", actor: "CO", a: "F" }, { st: "p", actor: "H", a: "C" },
+  { st: "p", actor: "SB", a: "C" }] };
+eq(validActions(hv1, s, "p", "BB"), ["F", "A", "X", "R"]);   // BB option: check, no call
+const hv2 = { ...hv0, events: [{ st: "f", actor: "SB", a: "B", amt: 4 }] };
+eq(validActions(hv2, s, "f", "BTN"), ["F", "A", "C", "R"]);  // facing a bet: no Bet/Check
+const hv3 = { ...hv0, events: [{ st: "f", actor: "SB", a: "A", amt: 40 }] };
+eq(validActions(hv3, s, "f", "BTN"), ["F", "A"]);            // facing all-in: fold or all-in
+const hstv = { ...hv0, events: [{ st: "p", actor: "UTG", a: "S", amt: 2 },
+  { st: "p", actor: "HJ", a: "C" }, { st: "p", actor: "CO", a: "F" },
+  { st: "p", actor: "H", a: "C" }, { st: "p", actor: "SB", a: "F" },
+  { st: "p", actor: "BB", a: "C" }] };
+eq(validActions(hstv, s, "p", "UTG"), ["F", "A", "X", "R"]); // straddler option
 
 /* straddle: blind raise with the option, aggressive for pot/to-call math */
 const hst = { ...newHand(s), pos: "BTN", villains: [], events: [

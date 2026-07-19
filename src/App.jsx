@@ -3,7 +3,8 @@ import { RANKS, SUITS, SUIT_CHAR, SUIT_COLOR, rVal, cid, cV, cS } from "./poker.
 import { STREETS, STREET_NAME, ACTIONS, posNames, newSession, newHand, toCall,
   potEstimate, fmtAmt, usedCards, activeStreet, exportSession, newPlayer,
   PLAYER_TYPES, playerStats, actionOrder, actionOn, handOver,
-  ledgerNet, netEstimate, playerAt, seatOrderOf, nextPos } from "./model.js";
+  ledgerNet, netEstimate, playerAt, seatOrderOf, nextPos, validActions }
+  from "./model.js";
 
 const C = { bg: "#0E1512", panel: "#18211C", line: "#2A362F", text: "#E8EDE9",
   dim: "#8FA096", gold: "#E0B34A", red: "#E4574F", green: "#55B36A" };
@@ -653,6 +654,13 @@ function HandEditor({ session, hand, patch, patchSession, back, next }) {
        untouched (or only straddles so far — restraddle) */
     const canStraddle = st === "p" &&
       hand.events.every((e) => e.st !== "p" || e.a === "S");
+    /* dealer rules: grey impossible actions; facing an all-in collapses
+       to Fold / All-in with the call amount filled in automatically */
+    const valid = legacy || cur == null ? null
+      : validActions(hand, session, st, cur);
+    const aggEvs = hand.events.filter((e) =>
+      e.st === st && "BRAS".includes(e.a) && e.amt != null);
+    const facingA = aggEvs.length > 0 && aggEvs[aggEvs.length - 1].a === "A";
     const evs = idxEvents.filter(({ e }) => e.st === st);
     const done = handOver(hand, seats) || st === "r";
     return (
@@ -679,10 +687,17 @@ function HandEditor({ session, hand, patch, patchSession, back, next }) {
           <div style={{ display: "flex", gap: 5, flexWrap: "wrap" }}>
             {Object.entries(ACTIONS)
               .filter(([k]) => k !== "S" || canStraddle)
-              .map(([k, name]) => (
-              <Chip key={k} on={pending === k}
-                onClick={() => ("BRAS".includes(k) ? setPending(k) : addEvent(st, k))}>
-                {name}</Chip>))}
+              .map(([k, name]) => {
+                const ok = !valid || k === "S" || valid.has(k);
+                return (
+                  <Chip key={k} on={pending === k}
+                    onClick={() => { if (!ok) return;
+                      if (k === "A" && facingA)         // call the shove
+                        return addEvent(st, "A", toCall(hand, st, bb));
+                      "BRAS".includes(k) ? setPending(k) : addEvent(st, k); }}
+                    style={ok ? {} : { opacity: 0.25 }}>
+                    {name}</Chip>);
+              })}
           </div>
           {pending && (
             <div style={{ display: "flex", gap: 5, marginTop: 8, alignItems: "center",

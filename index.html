@@ -11,6 +11,19 @@
     <title>Hand Log</title>
     <style>
       html, body { margin: 0; background: #0e1512; }
+      /* phone responsiveness: no gesture-disambiguation delay on taps,
+         no gray tap flash, instant pressed feedback instead */
+      button, select, input {
+        touch-action: manipulation;
+        -webkit-tap-highlight-color: transparent;
+      }
+      button:active {
+        transform: scale(0.95);
+        filter: brightness(1.35);
+      }
+      button { transition: transform 60ms ease-out; }
+      /* swipe pager: momentum + no accidental pull-to-refresh mid-swipe */
+      html, body { overscroll-behavior-y: contain; }
     </style>
   </head>
   <body>

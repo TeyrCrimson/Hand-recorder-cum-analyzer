@@ -164,9 +164,13 @@ function Sessions({ data, setData, open }) {
           <Field label="Name" value={draft.name ?? newSession(last || {}).name}
             onChange={(v) => setDraft({ ...draft, name: v })} />
           <div style={{ display: "flex", gap: 8 }}>
-            <Field label="SB" value={draft.sb ?? last?.sb ?? 0.5} num
+            <Field label={(draft.unit ?? last?.unit) === "cur"
+                ? `SB (${draft.cur ?? last?.cur ?? "$"})` : "SB"}
+              value={draft.sb ?? last?.sb ?? 0.5} num
               onChange={(v) => setDraft({ ...draft, sb: v })} />
-            <Field label="BB" value={draft.bb ?? last?.bb ?? 1} num
+            <Field label={(draft.unit ?? last?.unit) === "cur"
+                ? `BB (${draft.cur ?? last?.cur ?? "$"})` : "BB"}
+              value={draft.bb ?? last?.bb ?? 1} num
               onChange={(v) => setDraft({ ...draft, bb: v })} />
             <label style={{ flex: 1, fontSize: 11, color: C.dim,
               display: "block", marginBottom: 8 }}>
@@ -183,9 +187,15 @@ function Sessions({ data, setData, open }) {
           </div>
           <div style={{ display: "flex", gap: 6, margin: "10px 0" }}>
             <Chip on={(draft.unit ?? last?.unit ?? "bb") === "bb"}
-              onClick={() => setDraft({ ...draft, unit: "bb" })}>Big blinds</Chip>
+              onClick={() => setDraft({ ...draft, unit: "bb",
+                sb: draft.sb ?? (last?.unit === "bb" ? last.sb : 0.5),
+                bb: draft.bb ?? (last?.unit === "bb" ? last.bb : 1) })}>
+              Big blinds</Chip>
             <Chip on={(draft.unit ?? last?.unit ?? "bb") === "cur"}
-              onClick={() => setDraft({ ...draft, unit: "cur" })}>Currency</Chip>
+              onClick={() => setDraft({ ...draft, unit: "cur",
+                sb: draft.sb ?? (last?.unit === "cur" ? last.sb : 0.1),
+                bb: draft.bb ?? (last?.unit === "cur" ? last.bb : 0.2) })}>
+              Currency</Chip>
             {(draft.unit ?? last?.unit) === "cur" && (
               <Field label="Symbol" value={draft.cur ?? last?.cur ?? "$"}
                 onChange={(v) => setDraft({ ...draft, cur: v })} small />)}
